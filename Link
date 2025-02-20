@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Alive Raven Scene – Consistent Blood Drips</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.6.0/p5.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; background: #000; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <script>
+    // Global variables.
+    let buildings = [];
+    let drips = [];
+    let splats = [];
+    let fogParticles = [];
+    let sparkles = [];
+    let quotes = [];
+    let ravenImg;
+    let bg; // Radial gradient background
+
+    // Preload the raven image.
+    function preload() {
+      ravenImg = loadImage('https://images-wixmp-ed30a86b8c4ca887773594c2.wixmp.com/f/3ad2e459-3d67-45b2-b1c7-8e59a15411e9/d9zxmsf-655649e2-3e78-4c17-87ad-f8f0d9928fb5.png?token=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ1cm46YXBwOjdlMGQxODg5ODIyNjQzNzNhNWYwZDQxNWVhMGQyNmUwIiwiaXNzIjoidXJuOmFwcDo3ZTBkMTg4OTgyMjY0MzczYTVmMGQ0MTVlYTBkMjZlMCIsIm9iaiI6W1t7InBhdGgiOiJcL2ZcLzNhZDJlNDU5LTNkNjctNDViMi1iMWM3LThlNTlhMTU0MTFlOVwvZDl6eG1zZi02NTU2NDllMi0zZTc4LTRjMTctODdhZC1mOGYwZDk5MjhmYjUucG5nIn1dXSwiYXVkIjpbInVybjpzZXJ2aWNlOmZpbGUuZG93bmxvYWQiXX0.S4ZS2-W5I2_6oDyTTO4XjWrPc0GaUbElFMgR679M9ms');
+    }
+
+    function setup() {
+      createCanvas(windowWidth, windowHeight);
+      imageMode(CENTER);
+      noStroke();
+
+      // Create a radial gradient background.
+      bg = createRadialGradient(windowWidth, windowHeight);
+
+      // Generate a realistic city skyline.
+      let base = height * 0.75;
+      for (let i = 0; i < 30; i++) {
+        let b = {
+          x: random(width),
+          w: random(width / 20, width / 8),
+          h: random(height / 4, height / 2),
+          brightness: random(100, 180)  // Brighter buildings for contrast.
+        };
+        buildings.push(b);
+      }
+      buildings.sort((a, b) => a.x - b.x);
+
+      // Create blood drips with a more consistent flow.
+      // Spread initial y positions over the full canvas height so the flow is continuous.
+      for (let i = 0; i < 50; i++) {
+        drips.push(new Drip());
+      }
+
+      // Create fog particles.
+      for (let i = 0; i < 100; i++) {
+        fogParticles.push(new Fog());
+      }
+
+      // Create sparkle particles.
+      for (let i = 0; i < 50; i++) {
+        sparkles.push(new Sparkle());
+      }
+
+      // Atmospheric quotes.
+      quotes = [
+        "Blood binds us, even in solitude.",
+        "Every scar speaks a story of legacy and pain.",
+        "Within our veins, the legacy of our ancestors lives on.",
+        "Out of darkness, our truth bleeds through.",
+        "In the city of shattered dreams, the raven watches in eternal silence."
+      ];
+
+      textFont('Georgia');
+      textSize(22);
+      textAlign(CENTER, CENTER);
+    }
+
+    function draw() {
+      // Draw the radial gradient background.
+      image(bg, width / 2, height / 2);
+
+      // Overlay a subtle pulsing light effect at the center.
+      let pulse = map(sin(frameCount * 0.02), -1, 1, 0.9, 1.1);
+      fill(255, 20);
+      ellipse(width / 2, height / 2, width * 0.5 * pulse, height * 0.5 * pulse);
+
+      // Draw the city skyline.
+      drawCity();
+
+      // Update and display fog particles.
+      for (let f of fogParticles) {
+        f.update();
+        f.show();
+      }
+
+      // Update and display blood drips.
+      for (let drip of drips) {
+        drip.update();
+        drip.show();
+      }
+
+      // Update and display blood splatters.
+      for (let i = splats.length - 1; i >= 0; i--) {
+        splats[i].update();
+        splats[i].show();
+        if (splats[i].isFinished()) {
+          splats.splice(i, 1);
+        }
+      }
+
+      // Update and display sparkle particles.
+      for (let s of sparkles) {
+        s.update();
+        s.show();
+      }
+
+      // Draw the raven image in the center.
+      let ravenWidth = width * 0.3;
+      let ravenHeight = ravenImg.height * (ravenWidth / ravenImg.width);
+      image(ravenImg, width / 2, height / 2, ravenWidth, ravenHeight);
+
+      // Draw atmospheric quotes.
+      drawQuotes();
+    }
+
+    // Helper: Draw a teardrop shape using Bézier curves.
+    function drawDropShape(x, y, w, h) {
+      beginShape();
+      // Start at the bottom tip.
+      vertex(x, y);
+      // Left side curve.
+      bezierVertex(x - w * 0.5, y - h * 0.15, x - w * 0.6, y - h * 0.65, x - w * 0.2, y - h);
+      // Right side curve.
+      bezierVertex(x + w * 0.2, y - h, x + w * 0.6, y - h * 0.65, x + w * 0.5, y - h * 0.15);
+      endShape(CLOSE);
+    }
+
+    // Drip class: a blood drop that falls under gravity with a consistent flow.
+    class Drip {
+      constructor() {
+        this.x = random(width);
+        // Spread initial y positions over a larger range for continuous flow.
+        this.y = random(-height, 0);
+        this.vx = 0;  // No horizontal drift for a consistent downward flow.
+        // Use a nearly constant vertical speed with a slight variation.
+        this.vy = random(2, 2.5);
+        this.dropWidth = random(3, 6);
+        this.dropHeight = random(10, 20);
+      }
+      update() {
+        this.y += this.vy;
+        // Reset when the drop goes off the bottom.
+        if (this.y > height - 5) {
+          // Create a splatter on impact.
+          splats.push(new Splat(this.x, height - 5));
+          // Reset drop position (x remains random, y is set high above the canvas).
+          this.x = random(width);
+          this.y = random(-height, 0);
+          this.vy = random(2, 2.5);
+        }
+      }
+      show() {
+        fill(200, 0, 0, 230);
+        noStroke();
+        drawDropShape(this.x, this.y, this.dropWidth, this.dropHeight);
+      }
+    }
+
+    // Splat class: burst of blood droplets on impact.
+    class Splat {
+      constructor(x, y) {
+        this.particles = [];
+        let num = floor(random(8, 15));
+        for (let i = 0; i < num; i++) {
+          let angle = random(-PI/2 - 0.5, -PI/2 + 0.5);
+          let speed = random(1, 4);
+          let vx = cos(angle) * speed;
+          let vy = sin(angle) * speed;
+          let size = random(2, 6);
+          this.particles.push({ x: x, y: y, vx: vx, vy: vy, size: size, alpha: 200 });
+        }
+      }
+      update() {
+        for (let p of this.particles) {
+          p.x += p.vx;
+          p.y += p.vy;
+          // Apply slight friction.
+          p.vx *= 0.98;
+          p.vy *= 0.98;
+          p.alpha -= 3;
+        }
+      }
+      show() {
+        for (let p of this.particles) {
+          if (p.alpha > 0) {
+            fill(200, 0, 0, p.alpha);
+            noStroke();
+            ellipse(p.x, p.y, p.size);
+          }
+        }
+      }
+      isFinished() {
+        return this.particles.every(p => p.alpha <= 0);
+      }
+    }
+
+    // Fog class: drifting atmospheric fog.
+    class Fog {
+      constructor() {
+        this.x = random(width);
+        this.y = random(height * 0.75, height);
+        this.size = random(50, 150);
+        this.speed = random(0.1, 0.5);
+        this.alpha = random(20, 60);
+      }
+      update() {
+        this.x += this.speed + random(-0.2, 0.2);
+        if (this.x > width + this.size) {
+          this.x = -this.size;
+        }
+      }
+      show() {
+        fill(50, 50, 70, this.alpha);
+        noStroke();
+        ellipse(this.x, this.y, this.size);
+      }
+    }
+
+    // Sparkle class: tiny glowing particles.
+    class Sparkle {
+      constructor() {
+        this.x = random(width);
+        this.y = random(height);
+        this.size = random(2, 6);
+        this.speedX = random(-0.5, 0.5);
+        this.speedY = random(-0.5, 0.5);
+        this.alpha = random(150, 255);
+      }
+      update() {
+        this.x += this.speedX;
+        this.y += this.speedY;
+        if (this.x < 0) this.x = width;
+        if (this.x > width) this.x = 0;
+        if (this.y < 0) this.y = height;
+        if (this.y > height) this.y = 0;
+      }
+      show() {
+        fill(255, this.alpha);
+        noStroke();
+        ellipse(this.x, this.y, this.size);
+      }
+    }
+
+    // Draw the city skyline.
+    function drawCity() {
+      let base = height * 0.75;
+      for (let b of buildings) {
+        let col = color(b.brightness, b.brightness, b.brightness + 30);
+        fill(col);
+        rect(b.x, base - b.h, b.w, b.h);
+        let windowW = b.w / 6;
+        let windowH = 12;
+        let cols = floor(b.w / (windowW + 5));
+        let rows = floor(b.h / (windowH + 8));
+        for (let c = 0; c < cols; c++) {
+          for (let r = 0; r < rows; r++) {
+            let wx = b.x + 3 + c * (windowW + 5);
+            let wy = base - b.h + 5 + r * (windowH + 8);
+            let wb = random(150, 255);
+            let alphaFlicker = 80 + 80 * noise(c, r, frameCount * 0.01);
+            fill(wb, wb, wb, alphaFlicker);
+            rect(wx, wy, windowW, windowH);
+          }
+        }
+      }
+    }
+
+    // Draw atmospheric quotes.
+    function drawQuotes() {
+      fill(255);
+      textSize(22);
+      textStyle(ITALIC);
+      text(quotes[0], width / 2, 40);
+     
+      push();
+        translate(40, height / 2);
+        rotate(-HALF_PI);
+        text(quotes[1], 0, 0);
+      pop();
+     
+      push();
+        translate(width - 40, height / 2);
+        rotate(HALF_PI);
+        text(quotes[2], 0, 0);
+      pop();
+     
+      text(quotes[3], width / 2, height - 40);
+      text(quotes[4], width / 2, height * 0.75 - 25);
+    }
+
+    // Create a radial gradient with a bright center fading to black.
+    function createRadialGradient(w, h) {
+      let g = createGraphics(w, h);
+      g.noStroke();
+      let centerX = w / 2, centerY = h / 2;
+      let maxDist = dist(0, 0, centerX, centerY);
+      for (let r = maxDist; r > 0; r--) {
+        let inter = map(r, 0, maxDist, 0, 1);
+        let c = lerpColor(color(150,150,170), color(0,0,0), inter);
+        g.fill(c);
+        g.ellipse(centerX, centerY, r * 2, r * 2);
+      }
+      return g;
+    }
+
+    function windowResized() {
+      resizeCanvas(windowWidth, windowHeight);
+      bg = createRadialGradient(windowWidth, windowHeight);
+    }
+  </script>
+</body>
+</html>
